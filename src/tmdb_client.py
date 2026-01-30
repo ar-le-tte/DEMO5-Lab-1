@@ -2,6 +2,8 @@ import os
 import time
 import requests
 
+BASE_URL = "https://api.themoviedb.org/3"
+
 def get_tmdb_json(url, api_key, params=None, verbose=True):
     if params is None:
         params = {}
