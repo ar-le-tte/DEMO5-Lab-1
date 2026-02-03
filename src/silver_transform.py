@@ -15,8 +15,13 @@ def pipe_from_array(col_expr: str, field: str = "name"):
     return empty_to_null(
         F.concat_ws("|", F.expr(f"transform({col_expr}, x -> x.{field})"))
     )
-def zero_to_null(col):
-    return F.when(col.isNull() | (col == 0), F.lit(None)).otherwise(col)
+def zero_to_null_cols(df: DataFrame, cols: list[str]) -> DataFrame:
+    """
+    Replace 0 with NULL for selected numeric columns.
+    """
+    for c in cols:
+        df = df.withColumn(c, F.when(F.col(c) == 0, None).otherwise(F.col(c)))
+    return df
 
 def value_counts(df, col, top_n=20, drop_nulls=False):
     """
@@ -33,56 +38,39 @@ def value_counts(df, col, top_n=20, drop_nulls=False):
         .orderBy(F.desc("count"))
         .limit(top_n)
     )
-def normalize_text(col):
+def nullify_text_placeholders(df: DataFrame, cols: list[str], placeholders: list[str] | None = None) -> DataFrame:
     """
-    Convert empty strings and known placeholders to NULL.
+    Convert empty strings and known placeholder text to NULL for the specified columns.
     """
-    c = empty_to_null(F.col(col))
-    return F.when(
-        F.lower(F.trim(c)).isin("no data", "n/a", "na", "none", "null", "tbd", "unknown"),
-        F.lit(None)
-    ).otherwise(c)
+    if placeholders is None:
+        placeholders = ["no data", "n/a", "na", "none", "null", "tbd", "unknown", ""]
 
-def add_cleaning_rules(df, min_non_null_cols=10):
-    # 1) Text placeholders -> NULL
-    df = (df
-        .withColumn("overview", normalize_text("overview"))
-        .withColumn("tagline", normalize_text("tagline"))
-    )
-
-    # 2) 0 -> NULL for numeric fields
-    df = (df
-        .withColumn("budget", zero_to_null(F.col("budget")))
-        .withColumn("revenue", zero_to_null(F.col("revenue")))
-        .withColumn("runtime", zero_to_null(F.col("runtime")))
-    )
-
-    # 3) vote_count == 0 -> vote_average NULL
-    df = df.withColumn("vote_average",
-        F.when(F.col("vote_count") == 0, F.lit(None)).otherwise(F.col("vote_average"))
-    )
-
-    # 4) Convert to million USD
-    df = (df
+    for c in cols:
+        df = df.withColumn(
+            c,
+            F.when(
+                F.lower(F.trim(F.col(c))).isin([p.lower() for p in placeholders]),
+                None
+            ).otherwise(F.col(c)))
+    return df
+def add_musd_columns(df: DataFrame) -> DataFrame:
+    """
+    Add budget_musd and revenue_musd columns (million USD).
+    """
+    return (
+        df
         .withColumn("budget_musd", F.when(F.col("budget").isNull(), None).otherwise(F.col("budget") / 1_000_000))
         .withColumn("revenue_musd", F.when(F.col("revenue").isNull(), None).otherwise(F.col("revenue") / 1_000_000))
     )
 
-    # 5) Drop duplicates; drop rows with unknown id/title
-    df = (df
-        .dropDuplicates(["id"])
-        .filter(F.col("id").isNotNull() & F.col("title").isNotNull() & (F.trim(F.col("title")) != ""))
+def nullify_vote_average_when_no_votes(df: DataFrame) -> DataFrame:
+    """
+    If vote_count == 0, vote_average is not meaningful -> set to NULL.
+    """
+    return df.withColumn(
+        "vote_average",
+        F.when(F.col("vote_count") == 0, None).otherwise(F.col("vote_average"))
     )
-
-    # 6) Keep only rows where at least N columns are non-null
-    cols_to_check = [c for c in df.columns]  # includes derived columns too
-    non_null_count = sum(F.when(F.col(c).isNotNull(), F.lit(1)).otherwise(F.lit(0)) for c in cols_to_check)
-    df = df.withColumn("_non_null_cols", non_null_count).filter(F.col("_non_null_cols") >= min_non_null_cols).drop("_non_null_cols")
-
-    # 7) Only Released movies, then drop status
-    df = df.filter(F.col("status") == F.lit("Released"))
-    df = df.drop("status")
-    return df
 
 # ======================
 # Feature builders
