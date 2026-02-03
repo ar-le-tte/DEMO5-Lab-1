@@ -134,6 +134,42 @@ def cast_movie_types(df: DataFrame) -> DataFrame:
         .withColumn("vote_average", F.col("vote_average").cast("double"))
         .withColumn("release_date", F.to_date("release_date"))
     )
+
+def drop_bad_ids_titles(df: DataFrame) -> DataFrame:
+    """
+    Remove rows with missing/blank id or title.
+    """
+    return df.filter(
+        F.col("id").isNotNull() &
+        F.col("title").isNotNull() &
+        (F.trim(F.col("title")) != "")
+    )
+
+def dedupe_by_id(df: DataFrame) -> DataFrame:
+    """
+    Remove duplicate movie records by id.
+    """
+    return df.dropDuplicates(["id"])
+
+def keep_min_non_null(df: DataFrame, min_cols: int = 10) -> DataFrame:
+    """
+    Keep rows where at least `min_cols` columns are non-null.
+    """
+    non_null_expr = sum(
+        F.when(F.col(c).isNotNull(), 1).otherwise(0)
+        for c in df.columns
+    )
+    return (
+        df.withColumn("_non_null_count", non_null_expr)
+          .filter(F.col("_non_null_count") >= min_cols)
+          .drop("_non_null_count")
+    )
+
+def filter_released_drop_status(df: DataFrame) -> DataFrame:
+    """
+    Keep only Released movies, then drop status column.
+    """
+    return df.filter(F.col("status") == "Released").drop("status")
 # ======================
 # Columns to keep
 # ======================
@@ -166,3 +202,17 @@ def build_silver(df):
     )
     return out
 
+def reorder_silver_columns(df: DataFrame) -> DataFrame:
+    """
+    Reorder Silver movies columns into analysis-ready layout.
+    """
+    ordered_cols = ["id", "title", "tagline", "release_date",
+        "genres", "belongs_to_collection", "original_language",
+        "budget_musd", "revenue_musd", "production_companies",
+        "production_countries", "vote_count", "vote_average",
+        "popularity", "runtime", "overview", "spoken_languages",
+        "poster_path", "cast", "cast_size", "director", "crew_size",]
+
+    # keep only columns that actually exist
+    existing = [c for c in ordered_cols if c in df.columns]
+    return df.select(*existing)
