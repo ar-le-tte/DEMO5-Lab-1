@@ -1,5 +1,6 @@
 import os
 from pyspark.sql import SparkSession, functions as F
+from pyspark.sql import DataFrame
 
 # ======================
 # Helper Functions
@@ -116,7 +117,7 @@ def add_credits_features(df, cast_top_n=30):
 def add_spoken_languages(df):
     return df.withColumn(
         "spoken_languages",
-        pipe_from_array("spoken_languages_raw")
+        pipe_from_array("spoken_languages_raw", field="english_name")
     )
 def add_production_countries(df):
     return df.withColumn(
@@ -128,7 +129,23 @@ def add_production_companies(df):
         "production_companies",
         pipe_from_array("production_companies_raw")
     )
-
+def cast_movie_types(df: DataFrame) -> DataFrame:
+    """
+    Enforce consistent datatypes for analysis-ready Silver.
+    """
+    def safe_cast(col, dtype):
+        return F.when(F.trim(F.col(col)) == "", None).otherwise(F.col(col).cast(dtype))
+    return (
+        df
+        .withColumn("id", F.col("id").cast("long"))
+        .withColumn("budget", F.col("budget").cast("double"))
+        .withColumn("revenue", F.col("revenue").cast("double"))
+        .withColumn("popularity", F.col("popularity").cast("double"))
+        .withColumn("runtime", F.col("runtime").cast("double"))
+        .withColumn("vote_count", F.col("vote_count").cast("long"))
+        .withColumn("vote_average", F.col("vote_average").cast("double"))
+        .withColumn("release_date", F.to_date("release_date"))
+    )
 # ======================
 # Columns to keep
 # ======================
