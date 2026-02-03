@@ -7,16 +7,31 @@ from pyspark.sql import SparkSession, functions as F
 def empty_to_null(col):
     return F.when(F.trim(col) == "", F.lit(None)).otherwise(col)
 
-def pipe_from_array(col_expr):
+def pipe_from_array(col_expr: str, field: str = "name"):
     """
     Convert an array of structs with field 'name' into a |-delimited string.
     """
     return empty_to_null(
-        F.concat_ws("|", F.expr(f"transform({col_expr}, x -> x.name)"))
+        F.concat_ws("|", F.expr(f"transform({col_expr}, x -> x.{field})"))
     )
 def zero_to_null(col):
     return F.when(col.isNull() | (col == 0), F.lit(None)).otherwise(col)
 
+def value_counts(df, col, top_n=20, drop_nulls=False):
+    """
+    Spark equivalent of pandas value_counts().
+    """
+    out = df
+    if drop_nulls:
+        out = out.filter(F.col(col).isNotNull())
+
+    return (
+        out
+        .groupBy(col)
+        .count()
+        .orderBy(F.desc("count"))
+        .limit(top_n)
+    )
 def normalize_text(col):
     """
     Convert empty strings and known placeholders to NULL.
@@ -74,13 +89,13 @@ def add_cleaning_rules(df, min_non_null_cols=10):
 def add_genres(df):
     return df.withColumn(
         "genres",
-        pipe_from_array("movie.genres")
+        pipe_from_array("genres_raw")
     )
 
 def add_collection(df):
     return df.withColumn(
         "belongs_to_collection",
-        empty_to_null(F.col("movie.belongs_to_collection.name"))
+        empty_to_null(F.col("belongs_to_collection_raw.name"))
     )
 
 def add_credits_features(df, cast_top_n=30):
@@ -101,17 +116,17 @@ def add_credits_features(df, cast_top_n=30):
 def add_spoken_languages(df):
     return df.withColumn(
         "spoken_languages",
-        pipe_from_array("movie.spoken_languages")
+        pipe_from_array("spoken_languages_raw")
     )
 def add_production_countries(df):
     return df.withColumn(
         "production_countries",
-        pipe_from_array("movie.production_countries")
+        pipe_from_array("production_countries_raw")
     )
 def add_production_companies(df):
     return df.withColumn(
         "production_companies",
-        pipe_from_array("movie.production_companies")
+        pipe_from_array("production_companies_raw")
     )
 
 # ======================
@@ -145,48 +160,4 @@ def build_silver(df):
         F.col("movie.status").alias("status"),
     )
     return out
-def b(df, keep_arrays = True):
-    """
-    Build the Silver movies table from TMDB Bronze JSON. Keeping only the Relevant columns
 
-    """
-    out = df.select(
-        F.col("movie.id").alias("id"),
-        F.col("movie.title").alias("title"),
-        F.to_date("movie.release_date").alias("release_date"),
-        F.col("movie.original_language").alias("original_language"),
-        F.col("movie.belongs_to_collection").alias("belongs_to_collection_raw"),
-        F.col("movie.genres").alias("genres_raw"),
-        F.col("movie.spoken_languages").alias("spoken_languages_raw"),
-        F.col("movie.production_countries").alias("production_countries_raw"),
-        F.col("movie.production_companies").alias("production_companies_raw"),
-        F.col("movie.budget").cast("double").alias("budget"),
-        F.col("movie.revenue").cast("double").alias("revenue"),
-        F.col("movie.runtime").cast("double").alias("runtime"),
-        F.col("movie.vote_count").cast("long").alias("vote_count"),
-        F.col("movie.vote_average").cast("double").alias("vote_average"),
-        F.col("movie.popularity").cast("double").alias("popularity"),
-        F.col("movie.overview").alias("overview"),
-        F.col("movie.tagline").alias("tagline"),
-        F.col("movie.poster_path").alias("poster_path"),
-        F.col("movie.status").alias("status"),
-    )
-
-    # Genres
-    out = add_genres(out)
-
-    # Belongs to Collection
-    out = add_collection(out)
-    # Credits
-    out = add_credits_features(out)
-    # Languages / Countries / Companies
-    out = add_spoken_languages(out)
-    out = add_production_countries(out)
-    out = add_production_companies(out)
-    # Cleaning 
-    out = add_cleaning_rules(out, min_non_null_cols=10)
-    #  Dropping irrelevant columns (Helpers) for Final clean up
-    out = out.drop("movie")
-    if not keep_arrays:
-        out = out.drop("cast_arr", "crew_arr")
-    return out
