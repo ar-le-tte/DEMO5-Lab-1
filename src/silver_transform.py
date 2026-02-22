@@ -2,6 +2,10 @@ import os
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql import DataFrame
 
+from src.kpi_movies import _require_cols
+from src.logging_utils import get_logger
+logger = get_logger()
+
 # ======================
 # Helper Functions
 # ======================
@@ -31,13 +35,7 @@ def value_counts(df, col, top_n=20, drop_nulls=False):
     if drop_nulls:
         out = out.filter(F.col(col).isNotNull())
 
-    return (
-        out
-        .groupBy(col)
-        .count()
-        .orderBy(F.desc("count"))
-        .limit(top_n)
-    )
+    return (out.groupBy(col).count().orderBy(F.desc("count")).limit(top_n))
 def nullify_text_placeholders(df: DataFrame, cols: list[str], placeholders: list[str] | None = None) -> DataFrame:
     """
     Convert empty strings and known placeholder text to NULL for the specified columns.
@@ -174,45 +172,63 @@ def filter_released_drop_status(df: DataFrame) -> DataFrame:
 # Columns to keep
 # ======================
 
-def build_silver(df):
+def build_silver(df: DataFrame) -> DataFrame:
     """
-    Build the Silver movies table from TMDB Bronze JSON. Keeping only the Relevant columns
+    Build the Silver movies table from TMDB Bronze JSON.
+    """
+    logger.info("build_silver: selecting and flattening movie fields from bronze")
+    try:
+        _require_cols(df, ["movie"], "build_silver")  # checking the top level structure columns exist
 
-    """
-    out = df.select(
-        F.col("movie.id").alias("id"),
-        F.col("movie.title").alias("title"),
-        F.to_date("movie.release_date").alias("release_date"),
-        F.col("movie.original_language").alias("original_language"),
-        F.col("movie.belongs_to_collection").alias("belongs_to_collection_raw"),
-        F.col("movie.genres").alias("genres_raw"),
-        F.col("movie.spoken_languages").alias("spoken_languages_raw"),
-        F.col("movie.production_countries").alias("production_countries_raw"),
-        F.col("movie.production_companies").alias("production_companies_raw"),
-        F.col("movie.budget").cast("double").alias("budget"),
-        F.col("movie.revenue").cast("double").alias("revenue"),
-        F.col("movie.runtime").cast("double").alias("runtime"),
-        F.col("movie.vote_count").cast("long").alias("vote_count"),
-        F.col("movie.vote_average").cast("double").alias("vote_average"),
-        F.col("movie.popularity").cast("double").alias("popularity"),
-        F.col("movie.overview").alias("overview"),
-        F.col("movie.tagline").alias("tagline"),
-        F.col("movie.poster_path").alias("poster_path"),
-        F.col("movie.status").alias("status"),
-    )
-    return out
+        out = df.select(
+            F.col("movie.id").alias("id"),
+            F.col("movie.title").alias("title"),
+            F.to_date("movie.release_date").alias("release_date"),
+            F.col("movie.original_language").alias("original_language"),
+            F.col("movie.belongs_to_collection").alias("belongs_to_collection_raw"),
+            F.col("movie.genres").alias("genres_raw"),
+            F.col("movie.spoken_languages").alias("spoken_languages_raw"),
+            F.col("movie.production_countries").alias("production_countries_raw"),
+            F.col("movie.production_companies").alias("production_companies_raw"),
+            F.col("movie.budget").cast("double").alias("budget"),
+            F.col("movie.revenue").cast("double").alias("revenue"),
+            F.col("movie.runtime").cast("double").alias("runtime"),
+            F.col("movie.vote_count").cast("long").alias("vote_count"),
+            F.col("movie.vote_average").cast("double").alias("vote_average"),
+            F.col("movie.popularity").cast("double").alias("popularity"),
+            F.col("movie.overview").alias("overview"),
+            F.col("movie.tagline").alias("tagline"),
+            F.col("movie.poster_path").alias("poster_path"),
+            F.col("movie.status").alias("status"),
+        )
+
+        logger.info("build_silver: columns=%s", out.columns)
+        return out
+
+    except Exception:
+        logger.exception("build_silver failed")
+        raise
 
 def reorder_silver_columns(df: DataFrame) -> DataFrame:
-    """
-    Reorder Silver movies columns into analysis-ready layout.
-    """
-    ordered_cols = ["id", "title", "tagline", "release_date",
-        "genres", "belongs_to_collection", "original_language",
-        "budget_musd", "revenue_musd", "production_companies",
-        "production_countries", "vote_count", "vote_average",
-        "popularity", "runtime", "overview", "spoken_languages",
-        "poster_path", "cast", "cast_size", "director", "crew_size",]
+    logger.info("reorder_silver_columns: reordering and selecting final silver columns")
+    try:
+        ordered_cols = [
+            "id","title","tagline","release_date",
+            "genres","belongs_to_collection","original_language",
+            "budget_musd","revenue_musd","production_companies",
+            "production_countries","vote_count","vote_average",
+            "popularity","runtime","overview","spoken_languages",
+            "poster_path","cast","cast_size","director","crew_size",
+        ]
 
-    # keep only columns that actually exist
-    existing = [c for c in ordered_cols if c in df.columns]
-    return df.select(*existing)
+        existing = [c for c in ordered_cols if c in df.columns]
+        missing = [c for c in ordered_cols if c not in df.columns]
+
+        if missing:
+            logger.warning("reorder_silver_columns: missing columns skipped=%s", missing)
+
+        return df.select(*existing)
+
+    except Exception:
+        logger.exception("reorder_silver_columns failed")
+        raise
