@@ -16,6 +16,7 @@ Lab 1/
 │   └── tmdb_movies_analysis_orchestrator.ipynb
 │
 ├── src/
+│   ├── logging_utils.py              # Adding logs for different jobs
 │   ├── tmdb_client.py              # TMDB API client functions
 │   ├── bronze_to_spark.py          # Load Bronze JSON → Spark DataFrame
 │   ├── silver_transform.py         # Cleaning & feature engineering logic
