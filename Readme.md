@@ -54,7 +54,6 @@ This is responsible for computing analytical metrics and visualization
 - pyspark
 - requests
 - python-dotenv
-- pandas
 - matplotlib
 ### Requirements
 Create and activate a Python environment, then install:
