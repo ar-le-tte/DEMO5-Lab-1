@@ -18,6 +18,7 @@ Lab 1/
 ├── src/
 │   ├── logging_utils.py              # Adding logs for different jobs
 │   ├── tmdb_client.py              # TMDB API client functions
+│   ├── download_tmdb_bronze.py              # Fetching the raw data from the API
 │   ├── bronze_to_spark.py          # Load Bronze JSON → Spark DataFrame
 │   ├── silver_transform.py         # Cleaning & feature engineering logic
 │   ├── gold_analysis.py            # KPI computation & aggregations
@@ -32,6 +33,7 @@ This is responsible for Raw Ingestion: Storing the movies, credits JSON files as
 
 **Key scripts**: 
 - [`TMDB Client`](src/tmdb_client.py)
+- [`Movies Download`](src/download_tmdb_bronze.py)
 - [`Bronze to Spark`](src/bronze_to_spark.py)
 
 ### Silver Layer
