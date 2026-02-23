@@ -2,7 +2,7 @@
 
 ## Overview
 This lab implements an **end-to-end data analytics pipeline** using data from **The Movie Database (TMDB) API**.  
-The pipeline follows a **Bronze → Silver → Gold** architecture and combines **Python, PySpark, Pandas, and Matplotlib**.
+The pipeline follows a **Bronze → Silver → Gold** architecture and combines **Python, PySpark, and Matplotlib**.
 
 A **single Jupyter notebook** is used for orchestration, while all reusable logic is encapsulated in Python scripts.
 
